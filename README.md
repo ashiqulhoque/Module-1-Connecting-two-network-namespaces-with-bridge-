@@ -1,40 +1,85 @@
-# Module-1-Connecting-two-network-namespaces-with-bridge-
+## Module-1-Connecting-two-network-namespaces-with-bridge-
 
-﻿## Module 2 Networking Project
-**Project Description:** Make two network namespaces using 'red' and 'green' names, connect them with a bridge, and check connectivity. You have to successfully ping Google's public IP from those network namespaces.
-## Work Through
+**Project Description:** Make three network namespaces using 'red' and 'green' names, connect them with a bridge, and check connectivity.
 
-![img](diagram.png#center)
-*A simple diagram to visualize what we we'll do in this project*
-
-**Step-0:** Install necessary packages or tools in Linux machine using following command
-
+**Step-0:** Lets install necessary packages or tools in Linux 
+     
     sudo apt-get update
     sudo apt-get upgrade
-    sudo apt-get install iptables iproute2 iputils-ping net-tools -y
+    sudo apt-get install iproute2 iputils-ping net-tools -y
 
-**Step-1:** Create two network namespaces (*red and green*)
+**Step-1:** Create three network namespaces (*blue-ns ,gray-ns and lime-ns*)
 
-    sudo ip netns add red
-	sudo ip netns add green
+	sudo ip netns add blue-ns
+	sudo ip netns add gray-ns
+	sudo ip netns add lime-ns
 
-**Step-2:** Create a bridge (*br0*) network on the host. `Up` the created bridge and check whether it is created and in UP/UNKNOWN state.
+**Step-2:** Create a bridge (*v-net*) network on the host. And set the state to `Up`
 
-    sudo ip link add br0 type bridge
-	sudo ip link set br0 up
+
+    sudo ip link add dev v-net type bridge
+    sudo ip link set dev v-net up
+
+**Step-3:** Asign IP address to the bridge 
+
+	sudo ip address add 10.0.0.1/24 dev v-net
+
+**Step-4:** Create three `veth` interfaces and attach them to the bridge and namespaces accordingly.
+
+    # creating veths
+    sudo ip link add veth-blue-ns type veth peer name veth-blue-br
+    sudo ip link add veth-gray-ns type veth peer name veth-gray-br
+    sudo ip link add veth-lime-ns type veth peer name veth-lime-br
 	
-	#to make sure it's state run this command
-	sudo ip link show type bridge
-
-**Step-3:** Now, we need to create two `veth` interfaces for two network namespaces, then attach them to the bridge and namespaces accordingly.
-
-    #creating veths
-    sudo ip link add veth-red type veth peer name veth-red-br
-	sudo ip link add veth-green type veth peer name veth-green-br
+	# attaching with namespaces
+	sudo ip link set dev veth-blue-ns netns blue-ns
+	sudo ip link set dev veth-gray-ns netns gray-ns
+	sudo ip link set dev veth-lime-ns netns lime-ns
 	
-	#attaching with namespaces
-	sudo ip link set dev veth-red netns red
-	sudo ip link set dev veth-green netns green
-	
-	#attaching with bridge
-	sudo ip link set dev veth-red-br master br0
+	# attaching other ends with bridge
+	sudo ip link set dev veth-blue-br master v-net
+	sudo ip link set dev veth-gray-br master v-net
+	sudo ip link set dev veth-lime-br master v-net
+
+ **Step-5:** Setting all the cable interfaces `Up`
+
+	# Set the bridge interfaces up:
+	sudo ip link set dev veth-blue-br up
+	sudo ip link set dev veth-gray-br up
+	sudo ip link set dev veth-lime-br up
+	# Set the namespace interfaces up:
+	sudo ip netns exec blue-ns ip link set dev veth-blue-ns up
+	sudo ip netns exec gray-ns ip link set dev veth-gray-ns up
+	sudo ip netns exec lime-ns ip link set dev veth-lime-ns up
+ 	# to see all interfaces are currently in UP state
+  	sudo ip link show 
+   
+   **Step-6:** Assign IP addresses to the virtual interfaces within each namespace.
+   
+	sudo ip netns exec blue-ns ip address add 10.0.0.11/24 dev veth-blue-ns
+	sudo ip netns exec gray-ns ip address add 10.0.0.21/24 dev veth-gray-ns
+	sudo ip netns exec lime-ns ip address add 10.0.0.31/24 dev veth-lime-ns
+ 
+ **Step-7:** Set the default routes for network namespaces
+
+	 sudo ip netns exec blue-ns ip route add default via 10.0.0.1
+	 sudo ip netns exec gray-ns ip route add default via 10.0.0.1
+	 sudo ip netns exec lime-ns ip route add default via 10.0.0.1
+
+  
+**Step-8:**  Add firewall rules in iptable. 
+
+	sudo iptables --append FORWARD --in-interface v-net --jump ACCEPT
+	sudo iptables --append FORWARD --out-interface v-net --jump ACCEPT
+
+These rules enabled traffic to travel across the v-net virtual bridge.These are useful to allow all traffic to pass through the v-net interface without any restrictions.
+
+**Step-9:** Test connectivity from each namespaces
+
+	# From lime-ns
+	sudo ip netns exec lime-ns ping -c 2 10.0.0.11
+	# From gray-ns
+	sudo ip netns exec gray-ns ping -c 2 10.0.0.11
+	# From blue-ns
+	sudo ip netns exec blue-ns ping -c 2 10.0.0.21
+
